@@ -1,0 +1,182 @@
+# /etc/nginx/conf.d/modsecurity.conf
+# ModSecurity WAF configuration for Nginx
+
+# Load ModSecurity module
+load_module modules/ngx_http_modsecurity_module.so;
+
+# Main server configuration
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com www.example.com;
+    
+    # Redirect HTTP to HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name example.com www.example.com;
+    
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
+    
+    # Strong SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
+    ssl_dhparam /etc/nginx/ssl/dhparam.pem;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:50m;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    
+    # Document root
+    root /var/www/example.com/public_html;
+    index index.html index.php;
+    
+    # Enable ModSecurity globally
+    modsecurity on;
+    modsecurity_rules_file /etc/nginx/modsec/main.conf;
+    
+    # Custom ModSecurity rules for e-commerce
+    # These are in addition to the OWASP Core Rule Set
+    
+    # Basic settings
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+
+        # Enable ModSecurity per-location
+        modsecurity on;
+        
+        # Rate limiting for general pages
+        limit_req zone=general burst=20 nodelay;
+    }
+    
+    # Special protection for checkout pages
+    location ~ ^/checkout|/cart|/payment {
+        try_files $uri $uri/ /index.php$is_args$args;
+        
+        # Enhanced ModSecurity for sensitive areas
+        modsecurity on;
+        
+        # Additional checkout-specific ModSecurity rules
+        modsecurity_rules '
+            # Limit HTTP methods to GET and POST for checkout
+            SecRule REQUEST_METHOD "!^(?:GET|POST)$" "id:4001,phase:1,deny,status:405,msg:\'Method not allowed for checkout\'"
+            
+            # Block suspicious user agents in checkout
+            SecRule REQUEST_HEADERS:User-Agent "@contains bot" "id:4002,phase:1,deny,status:403,msg:\'Bot detected in checkout\'"
+            
+            # Check for common payment data tampering patterns
+            SecRule REQUEST_BODY "@contains price=" "chain,id:4003,phase:2"
+            SecRule REQUEST_BODY "price=0" "t:none,deny,status:403,msg:\'Potential price tampering\'"
+        ';
+        
+        # Strict rate limiting for checkout
+        limit_req zone=checkout burst=5 nodelay;
+    }
+    
+    # Administration area needs extra protection
+    location ~ ^/admin|/wp-admin {
+        try_files $uri $uri/ /index.php$is_args$args;
+        
+        # IP restriction for admin
+        allow 192.168.1.100;  # Your trusted IP
+        deny all;
+        
+        # Enhanced ModSecurity for admin
+        modsecurity on;
+        
+        # Additional admin-specific ModSecurity rules
+        modsecurity_rules '
+            # Increase anomaly threshold for admin
+            SecAction "id:5000,phase:1,nolog,pass,setvar:tx.inbound_anomaly_score_threshold=10"
+            
+            # Log all admin access
+            SecRule REQUEST_URI "^/admin" "id:5001,phase:1,pass,log,msg:\'Admin access\'"
+        ';
+        
+        # Very strict rate limiting for admin
+        limit_req zone=admin burst=2 nodelay;
+    }
+    
+    # API endpoints protection
+    location ~ ^/api {
+        try_files $uri $uri/ /index.php$is_args$args;
+        
+        # Enhanced ModSecurity for API
+        modsecurity on;
+        
+        # Additional API-specific ModSecurity rules
+        modsecurity_rules '
+            # Require API key for all API access
+            SecRule &REQUEST_HEADERS:X-API-Key "@eq 0" "id:6001,phase:1,deny,status:403,msg:\'API key required\'"
+            
+            # Validate JSON content
+            SecRule REQUEST_HEADERS:Content-Type "@contains application/json" "chain,id:6002,phase:1"
+            SecRule REQUEST_BODY "!@validateUrlEncoding" "t:none,deny,status:400,msg:\'Invalid JSON encoding\'"
+        ';
+        
+        # Rate limiting for API
+        limit_req zone=api burst=10 nodelay;
+    }
+    
+    # PHP handler with ModSecurity
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+        
+        # Enable ModSecurity for PHP scripts
+        modsecurity on;
+        
+        # The request body may have been blocked by ModSecurity
+        error_page 418 = @error418;
+    }
+    
+    # Custom error handler for ModSecurity block
+    location @error418 {
+        return 403 "Access Denied";
+    }
+    
+    # Static file handling
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+        expires max;
+        add_header Cache-Control "public, no-transform";
+        
+        # Reduced ModSecurity checks for static content
+        modsecurity on;
+        modsecurity_rules '
+            # Lower anomaly threshold for static content
+            SecAction "id:7000,phase:1,nolog,pass,setvar:tx.inbound_anomaly_score_threshold=20"
+        ';
+    }
+    
+    # Security headers
+    include /etc/nginx/includes/security_headers.conf;
+    
+    # Include additional application-specific configs
+    include /etc/nginx/conf.d/app_specific/*.conf;
+}
+
+# Rate limiting zones configuration
+limit_req_zone $binary_remote_addr zone=general:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=checkout:10m rate=10r/m;
+limit_req_zone $binary_remote_addr zone=admin:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;
+
+# IP blacklist config (automatically managed by security scripts)
+include /etc/nginx/conf.d/ip_blacklist.conf;
+
+# Install ModSecurity and OWASP CRS Instructions:
+# 1. apt-get install libmodsecurity3 libapache2-mod-security2
+# 2. git clone https://github.com/SpiderLabs/ModSecurity-nginx.git
+# 3. Compile Nginx with ModSecurity module 
+# 4. git clone https://github.com/coreruleset/coreruleset
+# 5. cp coreruleset/crs-setup.conf.example /etc/nginx/modsec/crs-setup.conf
+# 6. cp -r coreruleset/rules/ /etc/nginx/modsec/

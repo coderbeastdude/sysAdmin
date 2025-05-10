@@ -1,0 +1,49 @@
+# /etc/nginx/includes/security_headers.conf
+# Enhanced security headers including comprehensive CSP policy
+
+# Content Security Policy (CSP)
+# Carefully adjust these values based on your application's specific needs
+add_header Content-Security-Policy "default-src 'self'; 
+    script-src 'self' https://cdnjs.cloudflare.com https://www.google-analytics.com 'unsafe-inline'; 
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+    img-src 'self' data: https://www.google-analytics.com; 
+    font-src 'self' https://fonts.gstatic.com; 
+    connect-src 'self' https://api.your-domain.com https://www.google-analytics.com; 
+    frame-src 'none'; 
+    frame-ancestors 'self'; 
+    form-action 'self'; 
+    base-uri 'self';
+    object-src 'none';
+    manifest-src 'self'" always;
+
+# HTTP Strict Transport Security (HSTS)
+# Enforce HTTPS for this domain and all subdomains for 1 year
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+# X-Content-Type-Options
+# Prevent MIME type sniffing
+add_header X-Content-Type-Options "nosniff" always;
+
+# X-Frame-Options
+# Prevent this site from being embedded in iframes on other domains
+add_header X-Frame-Options "SAMEORIGIN" always;
+
+# X-XSS-Protection
+# Enable XSS filtering in browsers that support it
+add_header X-XSS-Protection "1; mode=block" always;
+
+# Referrer-Policy
+# Control what information is sent in the Referer header
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+# Feature-Policy
+# Control which browser features can be used
+add_header Feature-Policy "geolocation 'self'; midi 'none'; sync-xhr 'self'; microphone 'none'; camera 'none'; magnetometer 'none'; gyroscope 'none'; fullscreen 'self'; payment 'self'" always;
+
+# Permissions-Policy (newer version of Feature-Policy)
+add_header Permissions-Policy "geolocation=(self), midi=(), sync-xhr=(self), microphone=(), camera=(), magnetometer=(), gyroscope=(), fullscreen=(self), payment=(self)" always;
+
+# Remove Server header
+server_tokens off;
+more_clear_headers 'Server';
+more_clear_headers 'X-Powered-By';
