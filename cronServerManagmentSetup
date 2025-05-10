@@ -1,0 +1,95 @@
+   sudo mkdir -p /opt/admin/scripts
+   sudo cp *.sh /opt/admin/scripts/
+   sudo chmod +x /opt/admin/scripts/*.sh
+
+
+   sudo nano /etc/cron.d/server-management
+
+
+
+   # System Health Check - Every 15 minutes
+   */15 * * * * root /opt/admin/scripts/system_health_check.sh
+
+   # Disk Space Monitor - Every 4 hours
+   0 */4 * * * root /opt/admin/scripts/disk_space_monitor.sh
+
+   # Log Analyzer - Daily at 1 AM
+   0 1 * * * root /opt/admin/scripts/log_analyzer.sh
+
+   # Security Monitor - Every 30 minutes
+   */30 * * * * root /opt/admin/scripts/security_monitor.sh
+
+   # PostgreSQL Backup - Daily at 2 AM
+   0 2 * * * root /opt/admin/scripts/postgres_backup.sh
+
+   # File Backup - Daily at 3 AM
+   0 3 * * * root /opt/admin/scripts/file_backup.sh
+
+   # System Update - Weekly on Sunday at 4 AM
+   0 4 * * 0 root /opt/admin/scripts/system_update.sh
+
+   # Network Monitor - Every 10 minutes
+   */10 * * * * root /opt/admin/scripts/network_monitor.sh
+
+   # Service Watchdog - Every 5 minutes
+   */5 * * * * root /opt/admin/scripts/service_watchdog.sh
+
+   # PostgreSQL Optimizer - Weekly on Sunday at 2 AM
+   0 2 * * 0 root /opt/admin/scripts/postgres_optimizer.sh
+
+   # Cache Cleaner - Daily at 3 AM
+   0 3 * * * root /opt/admin/scripts/cache_cleaner.sh
+
+   # SSL Certificate Monitor - Daily at midnight
+   0 0 * * * root /opt/admin/scripts/ssl_cert_monitor.sh
+
+   # Master Monitor - Hourly
+   0 * * * * root /opt/admin/scripts/master_monitor.sh
+
+
+   sudo chmod 644 /etc/cron.d/server-management
+
+
+   sudo /opt/admin/scripts/system_health_check.sh
+
+   
+   1. **Resource Usage**: These scripts are scheduled to run at different times to avoid overlapping and causing high server load. The most resource-intensive scripts (backups, optimization) are scheduled during off-peak hours.
+
+   
+   2. **Email Notifications**: All scripts use the `mail` command to send alerts. Ensure a mail transfer agent (like Postfix) is installed and configured:
+   
+   sudo apt-get install postfix mailutils
+   
+
+
+   sudo apt-get install postfix mailutils
+
+   
+   3. **Log Rotation**: Set up log rotation for the script logs to prevent disk space issues:
+   
+   
+   sudo nano /etc/logrotate.d/admin-scripts
+   
+   
+
+   sudo nano /etc/logrotate.d/admin-scripts
+
+
+   /var/log/*_monitor.log /var/log/service_watchdog.log /var/log/postgres_*.log /var/log/system_*.log {
+       daily
+       rotate 7
+       compress
+       missingok
+       notifempty
+       create 0640 root adm
+   }
+
+
+4. **Master Script**: The `master_monitor.sh` script provides a centralized way to run and monitor all scripts. It generates a comprehensive report of system status.
+
+
+5. **Deployment Script**: The `app_deployment.sh` script is not scheduled via cron as deployments should typically be triggered manually or through a CI/CD pipeline.
+
+
+These scripts provide comprehensive monitoring and maintenance for your PERN stack server, covering all critical aspects from system health to application performance.
+
